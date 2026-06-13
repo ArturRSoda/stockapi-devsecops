@@ -1,0 +1,11 @@
+# Configuração customizada do Gitleaks para o projeto StockAPI
+# Mantém todas as regras padrão e adiciona regra específica para chave JWT hardcoded
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "python-hardcoded-jwt-secret"
+description = "Chave JWT hardcoded em variável Python — deveria ser lida de variável de ambiente"
+regex = '''SECRET_KEY\s*=\s*["'][^"']{8,}["']'''
+tags = ["jwt", "hardcoded", "python"]
