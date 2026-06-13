@@ -30,3 +30,11 @@ resource "aws_s3_bucket_public_access_block" "inventario_backup" {
   ignore_public_acls      = true
   restrict_public_buckets = true
 }
+
+resource "aws_s3_bucket_versioning" "inventario_backup" {
+  bucket = aws_s3_bucket.inventario_backup.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}

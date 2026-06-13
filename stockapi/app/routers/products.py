@@ -1,7 +1,6 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -34,17 +33,13 @@ def criar_produto(
     return novo
 
 
-@router.get("/search", response_model=List[dict])
+@router.get("/search", response_model=List[ProdutoResponse])
 def buscar_produtos(
     q: str,
     db: Session = Depends(get_db),
     _: Usuario = Depends(get_current_user),
 ):
-    # B608: construção de query SQL com f-string — vulnerabilidade intencional
-    resultado = db.execute(
-        text(f"SELECT id, nome, descricao, preco, quantidade FROM produtos WHERE nome LIKE '%{q}%'")
-    )
-    return [dict(row) for row in resultado.mappings()]
+    return db.query(Produto).filter(Produto.nome.ilike(f"%{q}%")).all()
 
 
 @router.get("/{produto_id}", response_model=ProdutoResponse)
