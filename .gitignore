@@ -1,0 +1,18 @@
+# Relatório e materiais locais (não vão para o repositório)
+relatorio/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Terraform
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+
+# Ambiente
+.env
+*.egg-info/

@@ -1,0 +1,3 @@
+SECRET_KEY = "minha-chave-jwt-super-secreta-123"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30

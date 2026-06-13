@@ -1,0 +1,178 @@
+name: DevSecOps Pipeline
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+
+  # ── 1. Secret Detection ──────────────────────────────────────────────────────
+  secret-scan:
+    name: "Secret Detection (Gitleaks)"
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout (histórico completo)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── 2. Software Composition Analysis ────────────────────────────────────────
+  sca:
+    name: "SCA (pip-audit)"
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar pip-audit
+        run: pip install pip-audit
+
+      - name: Executar pip-audit
+        run: pip-audit -r stockapi/requirements.txt
+        continue-on-error: true
+
+      - name: Gerar relatório JSON
+        if: always()
+        run: pip-audit -r stockapi/requirements.txt -f json > sca-report.json || true
+
+      - name: Upload artefato SCA
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sca-report
+          path: sca-report.json
+
+  # ── 3. Static Application Security Testing ──────────────────────────────────
+  sast:
+    name: "SAST (Bandit)"
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar Bandit
+        run: pip install bandit
+
+      - name: Executar Bandit
+        run: bandit -r stockapi/
+        continue-on-error: true
+
+      - name: Gerar relatório JSON
+        if: always()
+        run: bandit -r stockapi/ -f json -o sast-report.json || true
+
+      - name: Upload artefato SAST
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sast-report
+          path: sast-report.json
+
+  # ── 4. Infrastructure as Code Scan ──────────────────────────────────────────
+  iac-scan:
+    name: "IaC Scan (Checkov)"
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar Checkov
+        run: pip install checkov
+
+      - name: Checkov — Terraform
+        run: checkov -d terraform/
+        continue-on-error: true
+
+      - name: Checkov — Dockerfile e docker-compose
+        run: checkov -d stockapi/
+        continue-on-error: true
+
+      - name: Gerar relatório JSON
+        if: always()
+        run: checkov -d . -o json > iac-report.json || true
+
+      - name: Upload artefato IaC
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iac-report
+          path: iac-report.json
+
+  # ── 5. Dynamic Application Security Testing ─────────────────────────────────
+  dast:
+    name: "DAST (OWASP ZAP)"
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Iniciar aplicação com Docker Compose
+        run: |
+          cd stockapi
+          docker compose up -d
+
+      - name: Aguardar API ficar pronta
+        run: |
+          echo "Aguardando a API inicializar..."
+          for i in $(seq 1 30); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/openapi.json 2>/dev/null || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "API pronta apos ${i} tentativa(s)."
+              break
+            fi
+            echo "  tentativa $i/30 — status HTTP: $STATUS"
+            sleep 5
+          done
+          echo "Amostra do openapi.json:"
+          curl -s http://localhost:8000/openapi.json | head -c 300
+
+      - name: ZAP API Scan
+        uses: zaproxy/action-api-scan@v0.7.0
+        with:
+          target: "http://localhost:8000/openapi.json"
+          format: openapi
+          fail_action: false
+          allow_issue_writing: false
+        continue-on-error: true
+
+      - name: Upload relatório ZAP
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: |
+            report_html.html
+            report_json.json
+          if-no-files-found: warn
+
+      - name: Logs da aplicação
+        if: always()
+        run: |
+          cd stockapi
+          docker compose logs --tail=50
+
+      - name: Parar aplicação
+        if: always()
+        run: |
+          cd stockapi
+          docker compose down -v
